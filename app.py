@@ -193,9 +193,28 @@ if uploaded_file is not None:
             
             with tab1:
                 st.subheader(f"Heures totales travaillées par employé - {mois_choisi}")
-                # Passer la moyenne des seuils comme référence visuelle
-                chart = creer_graphique_heures_par_employe(filtered_df, seuil_ref_graphiques)
-                st.altair_chart(chart, use_container_width=True)
+                
+                # Filtrer les données par rôle
+                df_cuisine = filtered_df[filtered_df['Role'] == 'Cuisine']
+                df_salle = filtered_df[filtered_df['Role'] == 'Salle']
+                
+                # Créer et afficher le graphique pour la Cuisine
+                if not df_cuisine.empty:
+                    st.subheader("👨‍🍳 Employés Cuisine")
+                    chart_cuisine = creer_graphique_heures_par_employe(df_cuisine, SEUIL_MENSUEL_CUISINE, "Cuisine")
+                    st.altair_chart(chart_cuisine, use_container_width=True)
+                else:
+                    st.info("Aucune donnée pour les employés de Cuisine ce mois-ci.")
+                
+                st.divider()
+                
+                # Créer et afficher le graphique pour la Salle
+                if not df_salle.empty:
+                    st.subheader("💁 Employés Salle")
+                    chart_salle = creer_graphique_heures_par_employe(df_salle, SEUIL_MENSUEL_SALLE, "Salle")
+                    st.altair_chart(chart_salle, use_container_width=True)
+                else:
+                    st.info("Aucune donnée pour les employés de Salle ce mois-ci.")
             
             with tab2:
                 st.subheader(f"Heures travaillées par département - {mois_choisi}")

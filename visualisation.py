@@ -2,18 +2,28 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
-def creer_graphique_heures_par_employe(filtered_df, heures_standard):
+def creer_graphique_heures_par_employe(df_role_specific, seuil_role_specific, role_name):
     """
-    Crée un graphique à barres montrant les heures totales par employé.
+    Crée un graphique à barres montrant les heures totales par employé 
+    pour un rôle spécifique (Salle ou Cuisine) avec le seuil correspondant.
+
+    Args:
+        df_role_specific (pd.DataFrame): DataFrame filtré pour un seul rôle.
+        seuil_role_specific (float): Seuil mensuel d'heures pour ce rôle.
+        role_name (str): Nom du rôle ("Salle" ou "Cuisine") pour le titre.
     """
-    # Graphique Altair - Heures totales par employé avec ligne de référence
-    heures_par_employe = filtered_df.groupby(['name'])['hours_worked'].sum().reset_index()
+    if df_role_specific.empty:
+        # Retourner un graphique vide ou un message si aucune donnée pour ce rôle
+        return alt.Chart().mark_text(text=f"Aucun employé trouvé pour le rôle {role_name}.").properties(height=100)
+
+    # Graphique Altair - Heures totales par employé avec ligne de référence spécifique
+    heures_par_employe = df_role_specific.groupby(['name'])['hours_worked'].sum().reset_index()
     heures_par_employe = heures_par_employe.sort_values('hours_worked', ascending=False)
     
-    # Préparation des données
-    heures_ref_df = pd.DataFrame([{'threshold': heures_standard}])
+    # Préparation des données pour la ligne de référence spécifique
+    heures_ref_df = pd.DataFrame([{'threshold': seuil_role_specific}])
     
-    # Ligne de référence pour heures standard
+    # Ligne de référence pour heures standard du rôle
     rule = alt.Chart(heures_ref_df).mark_rule(
         strokeDash=[12, 6],
         stroke='red',
@@ -25,7 +35,7 @@ def creer_graphique_heures_par_employe(filtered_df, heures_standard):
     # Texte pour la ligne de référence
     text = alt.Chart(heures_ref_df).mark_text(
         align='right',
-        baseline='top',
+        baseline='bottom',
         dx=0,
         dy=-5,
         color='red',
@@ -33,7 +43,7 @@ def creer_graphique_heures_par_employe(filtered_df, heures_standard):
         fontWeight='bold'
     ).encode(
         y='threshold:Q',
-        text=alt.value(f"Seuil: {heures_standard}h")
+        text=alt.value(f"Seuil {role_name}: {seuil_role_specific:.2f}h")
     )
     
     # Barre pour heures totales
@@ -41,7 +51,7 @@ def creer_graphique_heures_par_employe(filtered_df, heures_standard):
         x=alt.X('name:N', title='Employé', sort='-y', axis=alt.Axis(labelAngle=-45)),
         y=alt.Y('hours_worked:Q', title='Heures totales'),
         color=alt.condition(
-            alt.datum.hours_worked > heures_standard,
+            alt.datum.hours_worked > seuil_role_specific,
             alt.value('#FF5733'),  # rouge pour heures supp
             alt.value('#4CAF50')   # vert pour heures normales
         ),
@@ -51,7 +61,7 @@ def creer_graphique_heures_par_employe(filtered_df, heures_standard):
     # Combinaison des graphiques
     chart = (bars + rule + text).properties(
         height=400,
-        title=f"Heures travaillées (seuil: {heures_standard}h)"
+        title=f"Heures travaillées ({role_name} - Seuil: {seuil_role_specific:.2f}h)"
     ).interactive()
     
     return chart
