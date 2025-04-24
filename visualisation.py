@@ -254,59 +254,62 @@ def creer_graphiques_tendance_journaliere(filtered_df, heures_jour):
     
     return chart, heatmap + text_heatmap
 
-def afficher_statut_employes(statut_df, heures_standard):
+def afficher_statut_employes(statut_df):
     """
-    Affiche le statut des heures supplémentaires pour chaque employé.
+    Affiche le statut des heures (Normal, Alerte, Dépassement) pour chaque employé 
+    en utilisant les données pré-calculées dans le DataFrame.
+
+    Args:
+        statut_df (pd.DataFrame): DataFrame contenant au moins les colonnes
+                                  'Nom', 'Heures Totales', 'Seuil Individuel',
+                                  'Heures Restantes', 'Statut'.
     """
-    # Nombre d'employés à afficher par ligne
-    employes_par_ligne = 3
-    
-    # Calculer le nombre de lignes nécessaires
-    nb_employes = len(statut_df)
-    nb_lignes = (nb_employes + employes_par_ligne - 1) // employes_par_ligne
-    
-    # Créer des groupes d'employés pour l'affichage
-    for i in range(nb_lignes):
-        # Créer une ligne avec 3 colonnes
-        cols = st.columns(employes_par_ligne)
-        
-        # Afficher jusqu'à 3 employés par ligne
-        for j in range(employes_par_ligne):
-            idx = i * employes_par_ligne + j
-            if idx < nb_employes:
-                employe = statut_df.iloc[idx]
-                with cols[j]:
-                    # Définir le style visuel en fonction du statut
-                    if employe['Statut'] == "Dépassement":
-                        color = "#FF5733"  # Rouge
-                        emoji = "🔴"
-                        message = f"+{employe['Heures Supp']:.1f}h supp."
-                    elif employe['Statut'] == "Alerte":
-                        color = "#FFC300"  # Orange/Jaune
-                        emoji = "🟠"
-                        message = f"{employe['Heures Restantes']:.1f}h restantes"
-                    else:
-                        color = "#4CAF50"  # Vert
-                        emoji = "🟢" 
-                        message = f"{employe['Heures Restantes']:.1f}h restantes"
-                    
-                    # Créer le conteneur avec un style personnalisé
-                    with st.container():
-                        st.markdown(f"""
-                        <div style="
-                            padding: 10px; 
-                            border-radius: 5px; 
-                            border: 2px solid {color}; 
-                            background-color: rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.1);
-                            text-align: center;
-                            margin-bottom: 10px;
-                        ">
-                            <h3 style="margin:0; font-size: 1.2em;">{emoji} {employe['Nom']}</h3>
-                            <p style="margin:0; font-weight: bold;">{employe['Heures Totales']:.1f}h / {heures_standard}h</p>
-                            <p style="margin:0; color: {color};">{message}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-    
+    # Vérifier la présence des colonnes nécessaires
+    required_cols = ['Nom', 'Heures Totales', 'Seuil Individuel', 'Heures Restantes', 'Statut']
+    if not all(col in statut_df.columns for col in required_cols):
+        st.error(f"Le DataFrame doit contenir les colonnes: {required_cols}")
+        return
+
+    # Définir les couleurs par statut
+    couleurs = {
+        "Normal": "#4CAF50",  # Vert
+        "Alerte": "#FFA500",  # Orange
+        "Dépassement": "#FF5733" # Rouge
+    }
+    icones = {
+        "Normal": "🟢",
+        "Alerte": "🟠",
+        "Dépassement": "🔴"
+    }
+
+    # Afficher les statuts pour chaque employé
+    cols = st.columns(3) # Affichage sur 3 colonnes
+    col_idx = 0
+    for index, row in statut_df.iterrows():
+        with cols[col_idx % 3]:
+            statut = row['Statut']
+            couleur = couleurs.get(statut, "#FFFFFF") # Blanc par défaut
+            icone = icones.get(statut, "")
+            
+            # Utiliser les colonnes pré-calculées du DataFrame
+            heures_travaillees = row['Heures Totales']
+            seuil_employe = row['Seuil Individuel']
+            heures_restantes = row['Heures Restantes'] # Déjà calculé correctement
+            
+            # Style CSS pour la bordure colorée
+            st.markdown(
+                f"""<div style='border: 2px solid {couleur}; 
+                                    padding: 10px; 
+                                    border-radius: 5px; 
+                                    margin-bottom: 10px;'>
+                        <p style='font-weight: bold; margin-bottom: 5px;'>{icone} {row['Nom']}</p>
+                        <p style='margin-bottom: 3px;'>{heures_travaillees:.1f}h / {seuil_employe:.2f}h</p>
+                        <p style='margin-bottom: 0px;'>{heures_restantes:.1f}h restantes</p>
+                    </div>""",
+                unsafe_allow_html=True
+            )
+        col_idx += 1
+
     # Légende
     st.markdown("""
     <div style="display: flex; justify-content: center; gap: 20px; margin-top: 15px;">

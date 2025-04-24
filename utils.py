@@ -111,10 +111,11 @@ def traiter_fichier(file, nom_onglet):
         res = res.sort_values(["emp_id", "date"]).reset_index(drop=True)
     return res
 
-def determiner_statut(heures_totales, heures_standard, marge_alerte):
-    if heures_totales > heures_standard:
+def determiner_statut(heures_totales, seuil_heures_standard, marge_alerte):
+    """Détermine le statut en fonction des heures travaillées par rapport au seuil spécifique."""
+    if heures_totales > seuil_heures_standard:
         return "Dépassement"
-    elif heures_standard - heures_totales <= marge_alerte:
+    elif seuil_heures_standard - heures_totales <= marge_alerte:
         return "Alerte"
     else:
         return "Normal" 
