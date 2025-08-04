@@ -70,6 +70,11 @@ def creer_graphiques_par_departement(filtered_df, heures_standard):
     """
     Crée des graphiques montrant les heures par département.
     """
+    # Vérifier si le DataFrame est vide
+    if filtered_df.empty:
+        empty_chart = alt.Chart().mark_text(text="Aucune donnée disponible").properties(height=100)
+        return empty_chart, empty_chart, empty_chart
+    
     # Graphique des heures par département
     heures_par_dept = filtered_df.groupby(['department'])['hours_worked'].sum().reset_index()
     heures_par_dept = heures_par_dept.sort_values('hours_worked', ascending=False)
@@ -135,25 +140,28 @@ def creer_graphiques_par_departement(filtered_df, heures_standard):
     
     # Graphique circulaire avec Altair
     pie_data = heures_par_dept.copy()
-    pie_data['angle'] = pie_data['hours_worked'] / pie_data['hours_worked'].sum() * 2 * 3.14159
-    pie_data['percentage'] = (pie_data['hours_worked'] / pie_data['hours_worked'].sum() * 100).round(1).astype(str) + '%'
+    if len(pie_data) == 0 or pie_data['hours_worked'].sum() == 0:
+        pie = alt.Chart().mark_text(text="Aucune donnée pour le graphique circulaire").properties(height=100)
+    else:
+        pie_data['angle'] = pie_data['hours_worked'] / pie_data['hours_worked'].sum() * 2 * 3.14159
+        pie_data['percentage'] = (pie_data['hours_worked'] / pie_data['hours_worked'].sum() * 100).round(1).astype(str) + '%'
     
-    pie = alt.Chart(pie_data).mark_arc().encode(
-        theta='angle:Q',
-        color=alt.Color('department:N', scale=alt.Scale(scheme='category10')),
-        tooltip=['department', 'hours_worked', 'percentage']
-    ).properties(
-        title="Répartition des heures par département",
-        height=400
-    )
-    
-    # Ajout des labels au graphique
-    text = alt.Chart(pie_data).mark_text(radiusOffset=20).encode(
-        theta=alt.value(0),
-        radius=alt.value(100),
-        text='department:N',
-        color=alt.value('black')
-    )
+        pie = alt.Chart(pie_data).mark_arc().encode(
+            theta='angle:Q',
+            color=alt.Color('department:N', scale=alt.Scale(scheme='category10')),
+            tooltip=['department', 'hours_worked', 'percentage']
+        ).properties(
+            title="Répartition des heures par département",
+            height=400
+        )
+        
+        # Ajout des labels au graphique
+        text = alt.Chart(pie_data).mark_text(radiusOffset=20).encode(
+            theta=alt.value(0),
+            radius=alt.value(100),
+            text='department:N',
+            color=alt.value('black')
+        )
     
     return chart1, chart_combo, pie
 
@@ -161,6 +169,11 @@ def creer_graphiques_tendance_journaliere(filtered_df, heures_jour):
     """
     Crée des graphiques montrant la tendance des heures par jour.
     """
+    # Vérifier si le DataFrame est vide
+    if filtered_df.empty:
+        empty_chart = alt.Chart().mark_text(text="Aucune donnée disponible").properties(height=100)
+        return empty_chart, empty_chart
+    
     # Préparation des données pour la tendance journalière
     heures_par_jour = filtered_df.groupby('date')['hours_worked'].sum().reset_index()
     

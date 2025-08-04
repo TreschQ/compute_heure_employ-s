@@ -298,6 +298,131 @@ if uploaded_file is not None:
             # Appel inchangé, la fonction utilise maintenant les données du df
             afficher_statut_employes(statut_df)
             
+            # Bouton pour imprimer le statut des employés
+            if st.button("🖨️ Imprimer les statuts des employés", key="print_status"):
+                # Générer le contenu HTML à imprimer directement avec les données
+                html_content = f"""
+                <html>
+                <head>
+                    <title>Statut des Employés</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; margin: 15px; }}
+                        .header {{ text-align: center; margin-bottom: 20px; }}
+                        .header h1 {{ font-size: 1.5em; margin: 10px 0; }}
+                        .header p {{ font-size: 0.9em; margin: 5px 0; }}
+                        .status-grid {{ 
+                            display: grid; 
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+                            gap: 10px; 
+                            max-height: 70vh;
+                            overflow: hidden;
+                        }}
+                        .status-item {{ 
+                            border: 2px solid; 
+                            padding: 8px; 
+                            border-radius: 6px; 
+                            font-size: 0.85em;
+                            margin-bottom: 0;
+                        }}
+                        .status-item p {{ margin: 3px 0; line-height: 1.2; }}
+                        .legend {{ margin-top: 15px; text-align: center; }}
+                        .legend-items {{ display: flex; justify-content: center; gap: 20px; font-weight: bold; font-size: 0.9em; }}
+                        @media print {{ 
+                            body {{ margin: 10px; font-size: 12px; }} 
+                            .header h1 {{ font-size: 1.3em; }}
+                            .status-grid {{ 
+                                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                                gap: 8px;
+                                page-break-inside: avoid;
+                            }}
+                            .status-item {{ 
+                                padding: 6px; 
+                                font-size: 0.8em;
+                                break-inside: avoid;
+                            }}
+                            .legend {{ margin-top: 10px; }}
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>Statut des heures supplémentaires</h1>
+                        <p>Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} - Mois: {mois_choisi}</p>
+                    </div>
+                    <div class="status-grid">
+                """
+                
+                # Ajouter chaque employé avec son statut
+                for index, row in statut_df.iterrows():
+                    statut = row['Statut']
+                    couleurs = {
+                        "Normal": "#4CAF50",
+                        "Alerte": "#FFA500", 
+                        "Dépassement": "#FF5733"
+                    }
+                    icones = {
+                        "Normal": "🟢",
+                        "Alerte": "🟠",
+                        "Dépassement": "🔴"
+                    }
+                    
+                    couleur = couleurs.get(statut, "#FFFFFF")
+                    icone = icones.get(statut, "")
+                    
+                    html_content += f"""
+                        <div class="status-item" style="border-color: {couleur};">
+                            <p style="font-weight: bold; margin-bottom: 8px;">{icone} {row['Nom']}</p>
+                            <p style="margin-bottom: 5px;">{row['Heures Totales']:.1f}h / {row['Seuil Individuel']:.1f}h</p>
+                            <p style="margin-bottom: 0px;">{row['Heures Restantes']:.1f}h restantes</p>
+                            <p style="margin-bottom: 0px; font-size: 0.9em; color: #666;">Rôle: {row['Role']}</p>
+                        </div>
+                    """
+                
+                html_content += """
+                    </div>
+                    <div class="legend">
+                        <div class="legend-items">
+                            <div>🟢 Normal</div>
+                            <div>🟠 Proche du quota</div>
+                            <div>🔴 Dépassement</div>
+                        </div>
+                    </div>
+                    <script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                            }, 100);
+                        }
+                    </script>
+                </body>
+                </html>
+                """
+                
+                # Créer un bouton de téléchargement HTML pour l'impression
+                st.download_button(
+                    label="📄 Télécharger le rapport d'impression (HTML)",
+                    data=html_content,
+                    file_name=f"statut_employes_{mois_choisi.lower()}_{datetime.now().strftime('%Y%m%d')}.html",
+                    mime="text/html"
+                )
+                
+                # Alternative: utiliser JavaScript pour imprimer directement
+                escaped_html = html_content.replace('`', '\\`')
+                st.components.v1.html(f"""
+                <script>
+                    function printStatus() {{
+                        var printWindow = window.open('', '_blank', 'width=800,height=600');
+                        printWindow.document.write(`{escaped_html}`);
+                        printWindow.document.close();
+                        printWindow.focus();
+                        setTimeout(function() {{
+                            printWindow.print();
+                        }}, 500);
+                    }}
+                    printStatus();
+                </script>
+                """, height=0)
+            
             # --- Graphiques --- 
             st.subheader("Visualisations")
             tab1, tab2, tab3 = st.tabs(["Heures totales par employé", "Heures par département", "Tendance journalière"])
