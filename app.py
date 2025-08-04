@@ -8,9 +8,11 @@ from visualisation import creer_graphique_heures_par_employe, creer_graphiques_p
 
 st.set_page_config(page_title="Calcul des Heures Employés", page_icon="⏱️")
 
-# Initialiser l'état de session pour les rôles si ce n'est pas déjà fait
+# Initialiser l'état de session pour les rôles et modifications manuelles si ce n'est pas déjà fait
 if 'employee_roles' not in st.session_state:
     st.session_state.employee_roles = {}
+if 'manual_adjustments' not in st.session_state:
+    st.session_state.manual_adjustments = {}
 
 # Supprimer les constantes globales, elles seront calculées à partir des inputs
 # SEUIL_CUISINE = 42 * 4.33 
@@ -135,12 +137,126 @@ if uploaded_file is not None:
             if roles_updated:
                  st.experimental_rerun()
             
-            # --- Affichage des données journalières ---
-            st.subheader(f"Aperçu des heures calculées - {mois_choisi}")
-            st.dataframe(filtered_df[['emp_id', 'name', 'department', 'date', 'hours_worked', 'Role']])
+            # Appliquer les modifications manuelles aux données
+            def apply_manual_adjustments(df):
+                """Applique les modifications manuelles aux heures travaillées"""
+                df_adjusted = df.copy()
+                for key, new_hours in st.session_state.manual_adjustments.items():
+                    emp_id, date_str = key.split('|')
+                    mask = (df_adjusted['emp_id'] == emp_id) & (df_adjusted['date'].dt.strftime('%Y-%m-%d') == date_str)
+                    df_adjusted.loc[mask, 'hours_worked'] = new_hours
+                return df_adjusted
             
-            # --- Préparation du CSV ---
-            csv = filtered_df.to_csv(index=False)
+            # Appliquer les ajustements manuels
+            adjusted_df = apply_manual_adjustments(filtered_df)
+            
+            # --- Section d'édition manuelle des heures ---
+            st.subheader("🔧 Édition manuelle des heures")
+            st.markdown("*Modifiez les heures pour corriger les problèmes de pointeuse (ex: après minuit)*")
+            
+            with st.expander("Modifier les heures d'un employé", expanded=False):
+                # Sélection de l'employé
+                employees_options = [(f"{row['name']} (ID: {row['emp_id']})", row['emp_id']) 
+                                   for _, row in filtered_df[['emp_id', 'name']].drop_duplicates().iterrows()]
+                
+                if employees_options:
+                    selected_option = st.selectbox(
+                        "Choisir un employé",
+                        options=employees_options,
+                        format_func=lambda x: x[0]
+                    )
+                    selected_emp_display, selected_emp_id = selected_option
+                    
+                    # Récupérer les données de l'employé sélectionné
+                    emp_data = filtered_df[filtered_df['emp_id'] == selected_emp_id].copy()
+                    emp_data = emp_data.sort_values('date')
+                    
+                    if not emp_data.empty:
+                        st.write(f"**Heures actuelles pour {emp_data.iloc[0]['name']}:**")
+                        
+                        # Créer une interface d'édition pour chaque jour
+                        cols = st.columns(3)
+                        col_idx = 0
+                        
+                        for idx, row in emp_data.iterrows():
+                            date_str = row['date'].strftime('%Y-%m-%d')
+                            date_display = row['date'].strftime('%d/%m/%Y')
+                            key = f"{selected_emp_id}|{date_str}"
+                            
+                            with cols[col_idx % 3]:
+                                # Valeur actuelle (originale ou modifiée)
+                                current_value = st.session_state.manual_adjustments.get(key, row['hours_worked'])
+                                
+                                new_hours = st.number_input(
+                                    f"{date_display}",
+                                    min_value=0.0,
+                                    max_value=24.0,
+                                    value=float(current_value),
+                                    step=0.25,
+                                    key=f"edit_{key}",
+                                    help=f"Heures originales: {row['hours_worked']:.2f}h"
+                                )
+                                
+                                # Sauvegarder la modification si différente de l'original
+                                if abs(new_hours - row['hours_worked']) > 0.01:  # Tolérance pour les erreurs de virgule flottante
+                                    st.session_state.manual_adjustments[key] = new_hours
+                                    st.success(f"✓ Modifié")
+                                elif key in st.session_state.manual_adjustments and abs(new_hours - row['hours_worked']) <= 0.01:
+                                    # Restaurer à la valeur originale
+                                    del st.session_state.manual_adjustments[key]
+                                
+                            col_idx += 1
+                        
+                        # Bouton pour réinitialiser toutes les modifications de cet employé
+                        if st.button(f"Réinitialiser toutes les heures de {emp_data.iloc[0]['name']}", key=f"reset_{selected_emp_id}"):
+                            keys_to_remove = [k for k in st.session_state.manual_adjustments.keys() 
+                                            if k.startswith(f"{selected_emp_id}|")]
+                            for k in keys_to_remove:
+                                del st.session_state.manual_adjustments[k]
+                            st.experimental_rerun()
+                
+                # Afficher le résumé des modifications
+                if st.session_state.manual_adjustments:
+                    st.subheader("📝 Résumé des modifications")
+                    modifications_data = []
+                    for key, new_hours in st.session_state.manual_adjustments.items():
+                        emp_id, date_str = key.split('|')
+                        emp_name = filtered_df[filtered_df['emp_id'] == emp_id]['name'].iloc[0]
+                        original_hours = filtered_df[
+                            (filtered_df['emp_id'] == emp_id) & 
+                            (filtered_df['date'].dt.strftime('%Y-%m-%d') == date_str)
+                        ]['hours_worked'].iloc[0]
+                        
+                        modifications_data.append({
+                            'Employé': emp_name,
+                            'Date': pd.to_datetime(date_str).strftime('%d/%m/%Y'),
+                            'Heures originales': f"{original_hours:.2f}",
+                            'Heures modifiées': f"{new_hours:.2f}",
+                            'Différence': f"{new_hours - original_hours:+.2f}"
+                        })
+                    
+                    if modifications_data:
+                        st.dataframe(pd.DataFrame(modifications_data), use_container_width=True)
+                        
+                        if st.button("🗑️ Réinitialiser toutes les modifications"):
+                            st.session_state.manual_adjustments = {}
+                            st.experimental_rerun()
+            
+            # --- Affichage des données journalières (avec modifications) ---
+            st.subheader(f"Aperçu des heures calculées - {mois_choisi}")
+            
+            # Ajouter une colonne pour indiquer les modifications
+            display_df = adjusted_df.copy()
+            display_df['Modifié'] = False
+            for key in st.session_state.manual_adjustments.keys():
+                emp_id, date_str = key.split('|')
+                mask = (display_df['emp_id'] == emp_id) & (display_df['date'].dt.strftime('%Y-%m-%d') == date_str)
+                display_df.loc[mask, 'Modifié'] = True
+            
+            st.dataframe(display_df[['emp_id', 'name', 'department', 'date', 'hours_worked', 'Role', 'Modifié']])
+            
+            # --- Préparation du CSV (avec données ajustées) ---
+            csv = adjusted_df.to_csv(index=False)
             st.download_button(
                 label=f"Télécharger le CSV - {mois_choisi}",
                 data=csv,
@@ -148,9 +264,9 @@ if uploaded_file is not None:
                 mime="text/csv"
             )
             
-            # --- Résumé par employé ---
+            # --- Résumé par employé (avec données ajustées) ---
             st.subheader(f"Résumé par employé - {mois_choisi}")
-            resume = filtered_df.groupby(['emp_id', 'name', 'department', 'Role'])['hours_worked'].agg(['sum', 'mean', 'count']).reset_index()
+            resume = adjusted_df.groupby(['emp_id', 'name', 'department', 'Role'])['hours_worked'].agg(['sum', 'mean', 'count']).reset_index()
             resume.columns = ['ID Employé', 'Nom', 'Département', 'Role', 'Heures Totales', 'Moyenne Quotidienne', 'Jours Travaillés']
             
             # Définir le seuil individuel basé sur le rôle et les SEUILS MENSUELS calculés
@@ -194,14 +310,14 @@ if uploaded_file is not None:
             with tab1:
                 st.subheader(f"Heures totales travaillées par employé - {mois_choisi}")
                 
-                # Filtrer les données par rôle
-                df_cuisine = filtered_df[filtered_df['Role'] == 'Cuisine']
-                df_salle = filtered_df[filtered_df['Role'] == 'Salle']
+                # Filtrer les données ajustées par rôle
+                df_cuisine_adj = adjusted_df[adjusted_df['Role'] == 'Cuisine']
+                df_salle_adj = adjusted_df[adjusted_df['Role'] == 'Salle']
                 
                 # Créer et afficher le graphique pour la Cuisine
-                if not df_cuisine.empty:
+                if not df_cuisine_adj.empty:
                     st.subheader("👨‍🍳 Employés Cuisine")
-                    chart_cuisine = creer_graphique_heures_par_employe(df_cuisine, SEUIL_MENSUEL_CUISINE, "Cuisine")
+                    chart_cuisine = creer_graphique_heures_par_employe(df_cuisine_adj, SEUIL_MENSUEL_CUISINE, "Cuisine")
                     st.altair_chart(chart_cuisine, use_container_width=True)
                 else:
                     st.info("Aucune donnée pour les employés de Cuisine ce mois-ci.")
@@ -209,25 +325,25 @@ if uploaded_file is not None:
                 st.divider()
                 
                 # Créer et afficher le graphique pour la Salle
-                if not df_salle.empty:
+                if not df_salle_adj.empty:
                     st.subheader("💁 Employés Salle")
-                    chart_salle = creer_graphique_heures_par_employe(df_salle, SEUIL_MENSUEL_SALLE, "Salle")
+                    chart_salle = creer_graphique_heures_par_employe(df_salle_adj, SEUIL_MENSUEL_SALLE, "Salle")
                     st.altair_chart(chart_salle, use_container_width=True)
                 else:
                     st.info("Aucune donnée pour les employés de Salle ce mois-ci.")
             
             with tab2:
                 st.subheader(f"Heures travaillées par département - {mois_choisi}")
-                # Passer la moyenne des seuils comme référence visuelle
-                chart1, chart_combo, pie = creer_graphiques_par_departement(filtered_df, seuil_ref_graphiques)
+                # Passer la moyenne des seuils comme référence visuelle avec données ajustées
+                chart1, chart_combo, pie = creer_graphiques_par_departement(adjusted_df, seuil_ref_graphiques)
                 st.altair_chart(chart1, use_container_width=True)
                 st.altair_chart(chart_combo, use_container_width=True)
                 st.altair_chart(pie, use_container_width=True)
             
             with tab3:
                 st.subheader(f"Tendance des heures travaillées par jour - {mois_choisi}")
-                # Passer la moyenne journalière indicative comme référence
-                chart, heatmap = creer_graphiques_tendance_journaliere(filtered_df, heures_jour_ref)
+                # Passer la moyenne journalière indicative comme référence avec données ajustées
+                chart, heatmap = creer_graphiques_tendance_journaliere(adjusted_df, heures_jour_ref)
                 st.altair_chart(chart, use_container_width=True)
                 st.altair_chart(heatmap, use_container_width=True)
         else:
@@ -251,7 +367,8 @@ with st.expander("À propos de l'application"):
     3. **Ajustez les seuils hebdomadaires pour la Cuisine et la Salle dans la barre latérale.**
     4. Définissez la marge d'alerte.
     5. **Assignez le rôle (Cuisine/Salle) à chaque employé dans la section dédiée.**
-    6. L'application calculera les heures travaillées et le statut des heures supplémentaires basé sur le rôle et les seuils définis.
-    7. Visualisez les résumés, statuts et graphiques.
-    8. Téléchargez le résultat détaillé (incluant les rôles) au format CSV.
+    6. **Modifiez manuellement les heures si nécessaire** (pour corriger les problèmes de pointeuse après minuit).
+    7. L'application calculera les heures travaillées et le statut des heures supplémentaires basé sur le rôle et les seuils définis.
+    8. Visualisez les résumés, statuts et graphiques (incluant les modifications manuelles).
+    9. Téléchargez le résultat détaillé au format CSV.
     """) 
