@@ -105,9 +105,11 @@ def traiter_fichier(file, nom_onglet):
         else:
             i += 1
 
-    # 6) Finalisation
+    # 6) Finalisation et déduplication
     res = pd.DataFrame(records)
     if not res.empty:
+        # Éliminer les doublons exacts (même emp_id, date, et hours_worked)
+        res = res.drop_duplicates(subset=["emp_id", "date", "hours_worked"], keep="first")
         res = res.sort_values(["emp_id", "date"]).reset_index(drop=True)
     return res
 
