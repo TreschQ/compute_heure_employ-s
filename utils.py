@@ -34,7 +34,7 @@ def traiter_fichier(file, nom_onglet):
         # on regarde les cellules à partir de la 2ᵉ colonne (col index 1)
         cells = [c.strip() for c in row.tolist()[1:]]
         num_count = sum(bool(num_pat.match(c)) for c in cells)
-        if num_count >= 10:  # typiquement 21 valeurs numériques
+        if num_count >= 5:  # au moins 5 jours (pour gérer semaines partielles ou courtes périodes)
             header_idx = idx
             break
     if header_idx is None:
