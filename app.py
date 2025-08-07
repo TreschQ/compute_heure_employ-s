@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import altair as alt
 import calendar
-from utils import lire_onglet_excel, traiter_fichier, determiner_statut
+from utils import lire_onglet_excel, traiter_fichier, determiner_statut, analyser_rythme_hebdomadaire
 from visualisation import creer_graphique_heures_par_employe, creer_graphiques_par_departement, creer_graphiques_tendance_journaliere, afficher_statut_employes
 
 st.set_page_config(page_title="Calcul des Heures Employés", page_icon="⏱️")
@@ -253,7 +253,17 @@ if uploaded_file is not None:
                 mask = (display_df['emp_id'] == emp_id) & (display_df['date'].dt.strftime('%Y-%m-%d') == date_str)
                 display_df.loc[mask, 'Modifié'] = True
             
-            st.dataframe(display_df[['emp_id', 'name', 'department', 'date', 'hours_worked', 'Role', 'Modifié']])
+            # Appliquer un style conditionnel pour les valeurs > 12h
+            def highlight_aberrant_hours(val):
+                """Style pour mettre en rouge les heures > 12"""
+                if isinstance(val, (int, float)) and val > 12:
+                    return 'background-color: #ffcccc; color: red; font-weight: bold'
+                return ''
+            
+            # Créer un dataframe stylé
+            styled_df = display_df[['emp_id', 'name', 'department', 'date', 'hours_worked', 'Role', 'Modifié']].style.applymap(highlight_aberrant_hours, subset=['hours_worked'])
+            
+            st.dataframe(styled_df, use_container_width=True)
             
             # --- Préparation du CSV (avec données ajustées) ---
             csv = adjusted_df.to_csv(index=False)
@@ -297,6 +307,79 @@ if uploaded_file is not None:
             statut_df = resume.sort_values('Heures Totales', ascending=False)
             # Appel inchangé, la fonction utilise maintenant les données du df
             afficher_statut_employes(statut_df)
+            
+            # --- Analyse du rythme hebdomadaire ---
+            st.subheader("📈 Analyse du rythme hebdomadaire (derniers jours)")
+            st.markdown("*Projection basée sur le rythme des derniers jours travaillés*")
+            
+            # Fonction pour obtenir le seuil hebdo selon le rôle
+            def get_seuil_hebdo(role):
+                if role == "Cuisine":
+                    return seuil_hebdo_cuisine
+                elif role == "Salle":
+                    return seuil_hebdo_salle
+                else:
+                    return (seuil_hebdo_cuisine + seuil_hebdo_salle) / 2
+            
+            # Analyser chaque employé
+            rythme_analyses = []
+            for _, emp_resume in resume.iterrows():
+                emp_id = emp_resume['ID Employé']
+                emp_data = adjusted_df[adjusted_df['emp_id'] == emp_id]
+                seuil_hebdo = get_seuil_hebdo(emp_resume['Role'])
+                
+                analyse = analyser_rythme_hebdomadaire(emp_data, seuil_hebdo, emp_resume['Role'])
+                if analyse:
+                    analyse['nom'] = emp_resume['Nom']
+                    rythme_analyses.append(analyse)
+            
+            if rythme_analyses:
+                # Trier par statut (risque en premier)
+                ordre_statut = {"RISQUE_DEPASSEMENT": 0, "SURVEILLANCE": 1, "RYTHME_NORMAL": 2}
+                rythme_analyses.sort(key=lambda x: ordre_statut.get(x['statut'], 3))
+                
+                # Afficher en colonnes
+                cols = st.columns(3)
+                col_idx = 0
+                
+                for analyse in rythme_analyses:
+                    with cols[col_idx % 3]:
+                        statut = analyse['statut']
+                        couleur = analyse['couleur']
+                        icone = analyse['icone']
+                        
+                        if statut == "RISQUE_DEPASSEMENT":
+                            status_text = "Risque de dépassement"
+                        elif statut == "SURVEILLANCE":
+                            status_text = "À surveiller"
+                        else:
+                            status_text = "Rythme normal"
+                        
+                        st.markdown(
+                            f"""<div style='border: 2px solid {couleur}; 
+                                            padding: 10px; 
+                                            border-radius: 5px; 
+                                            margin-bottom: 10px;'>
+                                    <p style='font-weight: bold; margin-bottom: 5px;'>{icone} {analyse['nom']}</p>
+                                    <p style='margin-bottom: 3px;'><strong>{status_text}</strong></p>
+                                    <p style='margin-bottom: 2px; font-size: 0.9em;'>Projection: {analyse['projection_hebdo']:.1f}h / {analyse['seuil_hebdo']:.0f}h</p>
+                                    <p style='margin-bottom: 2px; font-size: 0.85em; color: #666;'>Période: {analyse['date_debut']} → {analyse['date_fin']}</p>
+                                    <p style='margin-bottom: 0px; font-size: 0.85em; color: #666;'>{analyse['nb_jours']} jours • {analyse['moyenne_jour']:.1f}h/jour</p>
+                                </div>""",
+                            unsafe_allow_html=True
+                        )
+                    col_idx += 1
+                
+                # Légende pour le rythme hebdomadaire
+                st.markdown("""
+                <div style="display: flex; justify-content: center; gap: 20px; margin-top: 15px; font-size: 0.9em;">
+                    <div>⚠️ Risque de dépassement hebdomadaire</div>
+                    <div>⚡ Rythme à surveiller (>90% du seuil)</div>
+                    <div>✅ Rythme normal</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("Pas assez de données pour analyser le rythme hebdomadaire (minimum 3 jours requis).")
             
             # Bouton pour imprimer le statut des employés
             if st.button("🖨️ Imprimer les statuts des employés", key="print_status"):

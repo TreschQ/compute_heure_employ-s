@@ -256,15 +256,19 @@ def creer_graphiques_tendance_journaliere(filtered_df, heures_jour):
     heatmap_data = filtered_df.copy()
     heatmap_data['jour'] = heatmap_data['date'].dt.strftime('%d/%m')
     
-    # Création du heatmap
+    # Création du heatmap avec coloration spéciale pour les valeurs > 12h
     heatmap = alt.Chart(heatmap_data).mark_rect().encode(
         x=alt.X('jour:N', title='Jour', sort=None),
         y=alt.Y('name:N', title='Employé'),
-        color=alt.Color('hours_worked:Q', scale=alt.Scale(scheme='blues'), 
-                        legend=alt.Legend(title="Heures")),
+        color=alt.condition(
+            alt.datum.hours_worked > 12,
+            alt.value('#FF5733'),  # rouge pour > 12h
+            alt.Color('hours_worked:Q', scale=alt.Scale(scheme='blues'), 
+                     legend=alt.Legend(title="Heures"))
+        ),
         tooltip=['name', 'jour', 'hours_worked']
     ).properties(
-        title="Heures travaillées par jour et par employé",
+        title="Heures travaillées par jour et par employé (>12h en rouge)",
         height=len(heatmap_data['name'].unique()) * 30 + 50
     )
     

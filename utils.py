@@ -120,4 +120,68 @@ def determiner_statut(heures_totales, seuil_heures_standard, marge_alerte):
     elif seuil_heures_standard - heures_totales <= marge_alerte:
         return "Alerte"
     else:
-        return "Normal" 
+        return "Normal"
+
+def analyser_rythme_hebdomadaire(df_employe, seuil_hebdo, nom_role):
+    """
+    Analyse le rythme hebdomadaire de la dernière semaine pour un employé.
+    
+    Args:
+        df_employe (pd.DataFrame): Données filtrées pour un seul employé
+        seuil_hebdo (float): Seuil hebdomadaire en heures (39 ou 42)
+        nom_role (str): Nom du rôle pour l'affichage
+        
+    Returns:
+        dict: Informations sur le rythme hebdomadaire
+    """
+    if df_employe.empty:
+        return None
+    
+    # Convertir les dates et trier
+    df_employe = df_employe.copy()
+    df_employe['date'] = pd.to_datetime(df_employe['date'])
+    df_employe = df_employe.sort_values('date')
+    
+    # Prendre les 7 derniers jours disponibles
+    derniers_jours = df_employe.tail(7)
+    
+    if len(derniers_jours) < 3:  # Besoin d'au moins 3 jours pour une projection significative
+        return None
+    
+    # Calculer les heures totales de la période
+    heures_periode = derniers_jours['hours_worked'].sum()
+    nb_jours = len(derniers_jours)
+    
+    # Calculer la moyenne journalière
+    moyenne_jour = heures_periode / nb_jours
+    
+    # Projeter sur 7 jours (semaine complète)
+    projection_hebdo = moyenne_jour * 7
+    
+    # Déterminer le statut
+    if projection_hebdo > seuil_hebdo:
+        statut = "RISQUE_DEPASSEMENT"
+        couleur = "#FF5733"  # Rouge
+        icone = "⚠️"
+    elif projection_hebdo > seuil_hebdo * 0.9:  # 90% du seuil
+        statut = "SURVEILLANCE"
+        couleur = "#FFA500"  # Orange
+        icone = "⚡"
+    else:
+        statut = "RYTHME_NORMAL"
+        couleur = "#4CAF50"  # Vert
+        icone = "✅"
+    
+    return {
+        'statut': statut,
+        'couleur': couleur,
+        'icone': icone,
+        'heures_periode': heures_periode,
+        'nb_jours': nb_jours,
+        'moyenne_jour': moyenne_jour,
+        'projection_hebdo': projection_hebdo,
+        'seuil_hebdo': seuil_hebdo,
+        'nom_role': nom_role,
+        'date_debut': derniers_jours['date'].min().strftime('%d/%m/%Y'),
+        'date_fin': derniers_jours['date'].max().strftime('%d/%m/%Y')
+    } 
